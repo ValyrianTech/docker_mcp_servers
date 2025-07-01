@@ -1,57 +1,34 @@
-## ------------------------------- Builder Stage ------------------------------ ##
-FROM python:3.13-bookworm AS builder
+FROM denoland/deno:debian-1.41.3
 
+# Install necessary dependencies
 RUN apt-get update && apt-get install --no-install-recommends -y \
-        build-essential && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    curl \
+    unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Download the latest installer, install it and then remove it
-ADD https://astral.sh/uv/install.sh /install.sh
-RUN chmod -R 655 /install.sh && /install.sh && rm /install.sh
-
-# Set up the UV environment path correctly
-ENV PATH="/root/.local/bin:${PATH}"
-
-WORKDIR /app
-
-COPY ./pyproject.toml .
-
-RUN uv sync
-
-## ------------------------------- Production Stage ------------------------------ ##
-FROM python:3.13-slim-bookworm AS production
-
-# The following secrets are available during build time
-RUN --mount=type=secret,id=DB_PASSWORD \
---mount=type=secret,id=DB_USER \
---mount=type=secret,id=DB_NAME \
---mount=type=secret,id=DB_HOST \
---mount=type=secret,id=ACCESS_TOKEN_SECRET_KEY \
-DB_PASSWORD=/run/secrets/DB_PASSWORD \
-DB_USER=$(cat /run/secrets/DB_USER) \
-DB_NAME=$(cat /run/secrets/DB_NAME) \
-DB_HOST=$(cat /run/secrets/DB_HOST) \
-ACCESS_TOKEN_SECRET_KEY=$(cat /run/secrets/ACCESS_TOKEN_SECRET_KEY)
-
-RUN --mount=type=secret,id=secret-key,target=secrets.json
-
+# Create a non-root user for running the application
 RUN useradd --create-home appuser
+WORKDIR /home/appuser/app
+
+# Create node_modules directory and set permissions
+RUN mkdir -p node_modules && chown -R appuser:appuser /home/appuser
+
+# Switch to non-root user
 USER appuser
 
-WORKDIR /app
+# Set environment variables
+ENV DENO_DIR=/home/appuser/.deno
+ENV PATH="${DENO_DIR}/bin:${PATH}"
 
-COPY /src src
-COPY --from=builder /app/.venv .venv
+# Cache the MCP Run Python package
+RUN deno cache --node-modules-dir jsr:@pydantic/mcp-run-python
 
-# Set up environment variables for production
-ENV PATH="/app/.venv/bin:$PATH"
+# Expose port 8080 for SSE transport mode
+EXPOSE 8080
 
-# Expose the specified port for FastAPI
-EXPOSE $PORT
-
-# Start the application with Uvicorn in production mode, using environment variable references
-CMD ["uvicorn", "src.main:app", "--log-level", "info", "--host", "0.0.0.0" , "--port", "8080"]
-
-
-
-
+# Set the default command to run the MCP Run Python server in SSE mode
+# Use stdio mode instead if you plan to connect to this as a subprocess
+CMD ["deno", "run", "--allow-all", "--node-modules-dir", \
+     "jsr:@pydantic/mcp-run-python", "sse", "--port", "8080", "--host", "0.0.0.0"]
