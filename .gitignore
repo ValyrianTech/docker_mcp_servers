@@ -194,3 +194,5 @@ cython_debug/
 .cursorindexingignore
 
 .idea
+
+mcp_run_python/node_modules
