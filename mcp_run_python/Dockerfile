@@ -26,9 +26,10 @@ ENV PATH="${DENO_DIR}/bin:${PATH}"
 RUN deno cache --node-modules-dir jsr:@pydantic/mcp-run-python
 
 # Expose port 8080 for SSE transport mode
-EXPOSE 8080
+# Port not needed for stdio mode
+# EXPOSE 8080
 
-# Set the default command to run the MCP Run Python server in SSE mode
-# Use stdio mode instead if you plan to connect to this as a subprocess
-CMD ["deno", "run", "--allow-all", "--node-modules-dir", \
-     "jsr:@pydantic/mcp-run-python", "sse", "--port", "8080", "--host", "0.0.0.0"]
+# Set the default command to run the MCP Run Python server in stdio mode
+CMD ["deno", "run", \
+     "--allow-net", "--allow-read=node_modules", "--allow-write=node_modules", "--node-modules-dir", \
+     "jsr:@pydantic/mcp-run-python", "stdio"]
