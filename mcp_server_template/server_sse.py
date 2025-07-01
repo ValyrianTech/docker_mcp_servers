@@ -64,4 +64,4 @@ async def echo_with_context(message: str, ctx: Context) -> str:
 
 if __name__ == "__main__":
     # Run the server using SSE transport
-    mcp.run(transport="sse", host="127.0.0.1", port=8000)
+    mcp.run(transport="sse", host="127.0.0.1", port=8080)

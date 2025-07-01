@@ -30,39 +30,10 @@ client_initialized = False
 read_stream = None
 write_stream = None
 
+# We're not going to use this function anymore
 async def initialize_stdio_client():
     """Initialize the stdio client and return a session."""
-    global client_session, client_initialized, read_stream, write_stream
-    
-    if client_initialized:
-        return client_session
-    
-    print("Connecting to MCP Run Python stdio server...")
-    try:
-        # Use the context manager properly
-        async with stdio_client(stdio_server_params) as (read, write):
-            read_stream = read
-            write_stream = write
-            
-            print("Connected to MCP Run Python stdio server")
-            
-            session = ClientSession(read, write)
-            await session.initialize()
-            print("Session initialized")
-            
-            # List available tools for debugging
-            tools = await session.list_tools()
-            print(f"Number of tools available: {len(tools.tools)}")
-            for tool in tools.tools:
-                print(f"Tool name: {tool.name}")
-                print(f"Tool schema: {tool.inputSchema}")
-            
-            client_initialized = True
-            client_session = session
-            return session
-    except Exception as e:
-        print(f"Error initializing stdio client: {e}")
-        sys.exit(1)
+    pass
 
 @mcp.tool
 async def run_python_code(python_code: str, ctx: Context) -> Dict[str, Any]:
@@ -75,44 +46,48 @@ async def run_python_code(python_code: str, ctx: Context) -> Dict[str, Any]:
     Returns:
         The result of executing the Python code
     """
-    global client_session
-    
-    # Initialize the client session if it hasn't been initialized yet
-    if not client_session:
-        await ctx.info("Initializing stdio client...")
-        client_session = await initialize_stdio_client()
-    
     try:
-        # Forward the request to the stdio server
-        await ctx.info("Forwarding Python code execution request to stdio server")
-        result = await client_session.call_tool('run_python_code', {'python_code': python_code})
+        # Create a new connection for each request
+        await ctx.info("Creating new stdio client connection...")
         
-        # Parse the result text to extract components
-        text = result.content[0].text
-        
-        # Extract status, dependencies, output, and return value
-        status = extract_tag_content(text, "status")
-        dependencies = extract_tag_content(text, "dependencies")
-        output = extract_tag_content(text, "output")
-        return_value = extract_tag_content(text, "return_value")
-        
-        # Try to parse dependencies and return_value as JSON
-        try:
-            dependencies = json.loads(dependencies) if dependencies else []
-        except:
-            dependencies = []
+        # Use the context manager for the entire operation
+        async with stdio_client(stdio_server_params) as (read, write):
+            await ctx.info("Connected to MCP Run Python stdio server")
             
-        try:
-            return_value = json.loads(return_value) if return_value else None
-        except:
-            return_value = return_value
-        
-        return {
-            "status": status,
-            "dependencies": dependencies,
-            "output": output,
-            "return_value": return_value
-        }
+            session = ClientSession(read, write)
+            await session.initialize()
+            await ctx.info("Session initialized")
+            
+            # Forward the request to the stdio server
+            await ctx.info("Forwarding Python code execution request to stdio server")
+            result = await session.call_tool('run_python_code', {'python_code': python_code})
+            
+            # Parse the result text to extract components
+            text = result.content[0].text
+            
+            # Extract status, dependencies, output, and return value
+            status = extract_tag_content(text, "status")
+            dependencies = extract_tag_content(text, "dependencies")
+            output = extract_tag_content(text, "output")
+            return_value = extract_tag_content(text, "return_value")
+            
+            # Try to parse dependencies and return_value as JSON
+            try:
+                dependencies = json.loads(dependencies) if dependencies else []
+            except:
+                dependencies = []
+                
+            try:
+                return_value = json.loads(return_value) if return_value else None
+            except:
+                return_value = return_value
+            
+            return {
+                "status": status,
+                "dependencies": dependencies,
+                "output": output,
+                "return_value": return_value
+            }
     except Exception as e:
         await ctx.error(f"Error executing Python code: {str(e)}")
         return {"error": str(e)}
