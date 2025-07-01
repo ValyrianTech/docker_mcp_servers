@@ -12,6 +12,7 @@ print(a)
 a
 """
 
+# Configure to use the Docker container
 server_params = StdioServerParameters(
     command='docker',
     args=[
